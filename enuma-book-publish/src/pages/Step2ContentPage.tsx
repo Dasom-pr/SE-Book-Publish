@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useBook } from '../context/BookContext';
 import StepIndicator from '../components/StepIndicator';
 import PageEditor from '../components/PageEditor';
@@ -24,7 +24,18 @@ export default function Step2ContentPage({ onBack, onPublish, isEdit, onRevert }
   const { book, addPage, deletePage, deletePages, updatePage, setVoiceGender, setLanguage, totalCharCount } = useBook();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [speaking, setSpeaking] = useState<VoiceGender | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  useEffect(() => {
+    const load = () => {
+      const v = window.speechSynthesis.getVoices();
+      if (v.length > 0) setAvailableVoices(v);
+    };
+    load();
+    window.speechSynthesis.addEventListener('voiceschanged', load);
+    return () => window.speechSynthesis.removeEventListener('voiceschanged', load);
+  }, []);
 
   const handleSelect = (id: string, checked: boolean) => {
     setSelectedIds(prev => {
@@ -47,7 +58,21 @@ export default function Step2ContentPage({ onBack, onPublish, isEdit, onRevert }
 
   const getSampleText = () => {
     const firstText = book.pages[0]?.text?.trim();
-    return firstText || '안녕하세요! 이 목소리로 책을 읽어드립니다.';
+    if (firstText) return firstText;
+    if (book.language === 'ko') return '안녕하세요! 이 목소리로 책을 읽어드립니다.';
+    if (book.language === 'id') return 'Halo! Saya akan membacakan buku ini untuk Anda.';
+    return 'Hello! I will read this book for you.';
+  };
+
+  // 선택된 언어 + 성별에 맞는 실제 음성 반환
+  const getVoiceForGender = (gender: VoiceGender): SpeechSynthesisVoice | undefined => {
+    const langCode = book.language === 'ko' ? 'ko' : book.language === 'id' ? 'id' : 'en';
+    const langVoices = availableVoices.filter(v => v.lang.startsWith(langCode));
+    if (gender === 'male')
+      return langVoices.find(v => v.name.toLowerCase().includes('male')) || langVoices[0];
+    if (gender === 'female')
+      return langVoices.find(v => v.name.toLowerCase().includes('female')) || langVoices[0];
+    return langVoices[0];
   };
 
   const testVoice = (gender: VoiceGender) => {
@@ -147,43 +172,8 @@ export default function Step2ContentPage({ onBack, onPublish, isEdit, onRevert }
           ))}
         </div>
 
-        {/* 성우 선택 */}
-        <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
-          <h3 className="text-sm font-bold text-gray-700 mb-3">🎙️ 성우 선택</h3>
-          <div className="space-y-2">
-            {voices.map(v => (
-              <div key={v.value} className="flex items-center justify-between">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="voice"
-                    value={v.value}
-                    checked={book.voiceGender === v.value}
-                    onChange={() => setVoiceGender(v.value)}
-                    className="w-4 h-4 accent-orange-500"
-                  />
-                  <span className="text-lg">{v.icon}</span>
-                  <span className="text-sm font-medium text-gray-700">{v.label}</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => testVoice(v.value)}
-                  disabled={speaking !== null}
-                  className={`text-xs px-3 py-1 rounded-full border font-medium transition-all
-                    ${speaking === v.value
-                      ? 'bg-orange-100 border-orange-400 text-orange-600 animate-pulse'
-                      : 'border-gray-200 text-gray-500 hover:border-orange-300 hover:text-orange-500'}`}
-                >
-                  {speaking === v.value ? '▶ 재생 중...' : '▶ 테스트'}
-                </button>
-              </div>
-            ))}
-          </div>
-          <p className="text-xs text-gray-400 mt-2">* 첫 번째 페이지 문구로 목소리를 미리 들어보세요.</p>
-        </div>
-
         {/* 발간 언어 */}
-        <div className="bg-white rounded-2xl shadow-sm p-5">
+        <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
           <h3 className="text-sm font-bold text-gray-700 mb-3">🌏 발간 언어</h3>
           <div className="flex gap-3">
             {languages.map(lang => {
@@ -205,6 +195,53 @@ export default function Step2ContentPage({ onBack, onPublish, isEdit, onRevert }
               );
             })}
           </div>
+        </div>
+
+        {/* 성우 선택 */}
+        <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
+          <h3 className="text-sm font-bold text-gray-700 mb-3">🎙️ 성우 선택</h3>
+          <div className="space-y-2">
+            {voices.map(v => {
+              const actualVoice = getVoiceForGender(v.value);
+              return (
+                <div key={v.value} className="flex items-center justify-between">
+                  <label className="flex items-center gap-3 cursor-pointer min-w-0">
+                    <input
+                      type="radio"
+                      name="voice"
+                      value={v.value}
+                      checked={book.voiceGender === v.value}
+                      onChange={() => setVoiceGender(v.value)}
+                      className="w-4 h-4 accent-orange-500 shrink-0"
+                    />
+                    <span className="text-lg shrink-0">{v.icon}</span>
+                    <div className="min-w-0">
+                      <span className="text-sm font-medium text-gray-700">{v.label}</span>
+                      {availableVoices.length > 0 && (
+                        actualVoice
+                          ? <p className="text-[10px] text-gray-400 truncate">{actualVoice.name}</p>
+                          : <p className="text-[10px] text-red-400">이 언어 음성 없음</p>
+                      )}
+                    </div>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => testVoice(v.value)}
+                    disabled={speaking !== null || !actualVoice}
+                    className={`text-xs px-3 py-1 rounded-full border font-medium transition-all shrink-0 ml-2
+                      ${speaking === v.value
+                        ? 'bg-orange-100 border-orange-400 text-orange-600 animate-pulse'
+                        : actualVoice
+                          ? 'border-gray-200 text-gray-500 hover:border-orange-300 hover:text-orange-500'
+                          : 'border-gray-100 text-gray-300 cursor-not-allowed'}`}
+                  >
+                    {speaking === v.value ? '▶ 재생 중...' : '▶ 테스트'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-xs text-gray-400 mt-2">* 첫 번째 페이지 문구로 목소리를 미리 들어보세요.</p>
         </div>
       </div>
 

@@ -4,6 +4,7 @@ import StepIndicator from '../components/StepIndicator';
 import PageEditor from '../components/PageEditor';
 import type { VoiceGender, Language } from '../types/book';
 import { LANGUAGE_LABELS } from '../types/book';
+import { translateText } from '../utils/translate';
 
 interface Props {
   onBack: () => void;
@@ -56,14 +57,6 @@ export default function Step2ContentPage({ onBack, onPublish, isEdit, onRevert }
     setSelectedIds(prev => { const next = new Set(prev); next.delete(id); return next; });
   };
 
-  const getSampleText = () => {
-    const firstText = book.pages[0]?.text?.trim();
-    if (firstText) return firstText;
-    if (book.language === 'ko') return '안녕하세요! 이 목소리로 책을 읽어드립니다.';
-    if (book.language === 'id') return 'Halo! Saya akan membacakan buku ini untuk Anda.';
-    return 'Hello! I will read this book for you.';
-  };
-
   // 선택된 언어 + 성별에 맞는 실제 음성 반환
   const getVoiceForGender = (gender: VoiceGender): SpeechSynthesisVoice | undefined => {
     const langCode = book.language === 'ko' ? 'ko' : book.language === 'id' ? 'id' : 'en';
@@ -75,15 +68,28 @@ export default function Step2ContentPage({ onBack, onPublish, isEdit, onRevert }
     return langVoices[0];
   };
 
-  const testVoice = (gender: VoiceGender) => {
+  const testVoice = async (gender: VoiceGender) => {
     if (!('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
+    setSpeaking(gender); // 번역 로딩 표시
+
+    // 첫 번째 페이지 원문을 발간 언어로 번역 후 읽기
+    const raw = book.pages[0]?.text?.trim();
+    let sample: string;
+    if (raw) {
+      try { sample = await translateText(raw, book.language); }
+      catch { sample = raw; }
+    } else {
+      if (book.language === 'ko') sample = '안녕하세요! 이 목소리로 책을 읽어드립니다.';
+      else if (book.language === 'id') sample = 'Halo! Saya akan membacakan buku ini untuk Anda.';
+      else sample = 'Hello! I will read this book for you.';
+    }
 
     const langCode = book.language === 'ko' ? 'ko' : book.language === 'id' ? 'id' : 'en';
     const langFull = book.language === 'ko' ? 'ko-KR' : book.language === 'id' ? 'id-ID' : 'en-US';
 
     const startTest = (voices: SpeechSynthesisVoice[]) => {
-      const utter = new SpeechSynthesisUtterance(getSampleText());
+      const utter = new SpeechSynthesisUtterance(sample);
       utter.lang = langFull;
 
       if (gender === 'male') {
@@ -133,6 +139,31 @@ export default function Step2ContentPage({ onBack, onPublish, isEdit, onRevert }
 
         <StepIndicator currentStep={2} />
 
+        {/* 발간 언어 (맨 위) */}
+        <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
+          <h3 className="text-sm font-bold text-gray-700 mb-3">🌏 발간 언어</h3>
+          <div className="flex gap-3">
+            {languages.map(lang => {
+              const { label, flag } = LANGUAGE_LABELS[lang];
+              const active = book.language === lang;
+              return (
+                <button
+                  key={lang}
+                  type="button"
+                  onClick={() => setLanguage(lang)}
+                  className={`flex-1 flex flex-col items-center py-3 rounded-xl border-2 transition-all font-medium text-sm
+                    ${active
+                      ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-sm'
+                      : 'border-gray-200 text-gray-500 hover:border-orange-200'}`}
+                >
+                  <span className="text-2xl mb-1">{flag}</span>
+                  <span className="text-xs">{label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* 상단 툴바 */}
         <div className="flex items-center justify-between bg-white rounded-xl px-4 py-2.5 shadow-sm mb-4">
           <div className="flex items-center gap-3">
@@ -165,36 +196,12 @@ export default function Step2ContentPage({ onBack, onPublish, isEdit, onRevert }
               page={page}
               selected={selectedIds.has(page.id)}
               bookTitle={book.meta.title}
+              language={book.language}
               onSelect={handleSelect}
               onUpdate={updatePage}
               onDelete={handleDeletePage}
             />
           ))}
-        </div>
-
-        {/* 발간 언어 */}
-        <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
-          <h3 className="text-sm font-bold text-gray-700 mb-3">🌏 발간 언어</h3>
-          <div className="flex gap-3">
-            {languages.map(lang => {
-              const { label, flag } = LANGUAGE_LABELS[lang];
-              const active = book.language === lang;
-              return (
-                <button
-                  key={lang}
-                  type="button"
-                  onClick={() => setLanguage(lang)}
-                  className={`flex-1 flex flex-col items-center py-3 rounded-xl border-2 transition-all font-medium text-sm
-                    ${active
-                      ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-sm'
-                      : 'border-gray-200 text-gray-500 hover:border-orange-200'}`}
-                >
-                  <span className="text-2xl mb-1">{flag}</span>
-                  <span className="text-xs">{label}</span>
-                </button>
-              );
-            })}
-          </div>
         </div>
 
         {/* 성우 선택 */}

@@ -12,15 +12,27 @@ export default function BookViewerPage() {
   const [book, setBook] = useState<StoredBook | null>(null);
   const [currentPage, setCurrentPage] = useState(0);       // 0 = 표지
   const [speaking, setSpeaking] = useState(false);
-  const [autoRead, setAutoRead] = useState(false);          // 🎧 헤드폰 토글
+  const [autoRead, setAutoRead] = useState(false);
   const [highlight, setHighlight] = useState<HighlightRange | null>(null);
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
   const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
 
   useEffect(() => { if (id) setBook(getBook(id)); }, [id]);
-  useEffect(() => () => {
-    window.speechSynthesis.cancel();
-    if (keepAliveRef.current) clearInterval(keepAliveRef.current);
+
+  // 컴포넌트 마운트 시 voices 미리 로드
+  useEffect(() => {
+    const loadVoices = () => {
+      const v = window.speechSynthesis.getVoices();
+      if (v.length > 0) voicesRef.current = v;
+    };
+    loadVoices();
+    window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
+    return () => {
+      window.speechSynthesis.removeEventListener('voiceschanged', loadVoices);
+      window.speechSynthesis.cancel();
+      if (keepAliveRef.current) clearInterval(keepAliveRef.current);
+    };
   }, []);
 
   const readAloud = useCallback((text: string, voiceGender: string, language: string) => {
@@ -32,82 +44,68 @@ export default function BookViewerPage() {
     const langCode = language === 'ko' ? 'ko' : language === 'id' ? 'id' : 'en';
     const langFull = language === 'ko' ? 'ko-KR' : language === 'id' ? 'id-ID' : 'en-US';
 
-    const startSpeech = (voices: SpeechSynthesisVoice[]) => {
-      const utter = new SpeechSynthesisUtterance(text);
-      utter.lang = langFull;
+    // 미리 로드된 voices 사용, 없으면 즉시 조회
+    const voices = voicesRef.current.length > 0
+      ? voicesRef.current
+      : window.speechSynthesis.getVoices();
 
-      if (voiceGender === 'child') { utter.pitch = 1.6; utter.rate = 1.05; }
-      else if (voiceGender === 'male') { utter.pitch = 0.8; utter.rate = 0.95; }
-      else { utter.pitch = 1.1; utter.rate = 1.0; }
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = langFull;
 
-      const v = voices.find(v => v.lang.startsWith(langCode));
-      if (v) utter.voice = v;
+    if (voiceGender === 'child') { utter.pitch = 1.6; utter.rate = 1.05; }
+    else if (voiceGender === 'male') { utter.pitch = 0.8; utter.rate = 0.95; }
+    else { utter.pitch = 1.1; utter.rate = 1.0; }
 
-      // Chrome에서 긴 텍스트가 멈추는 버그 우회: 10초마다 pause→resume
-      const keepAlive = setInterval(() => {
-        if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
-          window.speechSynthesis.pause();
-          window.speechSynthesis.resume();
-        } else if (!window.speechSynthesis.speaking) {
-          clearInterval(keepAlive);
-        }
-      }, 10000);
-      keepAliveRef.current = keepAlive;
+    const v = voices.find(v => v.lang.startsWith(langCode));
+    if (v) utter.voice = v;
 
-      // 어절 단위 하이라이트
-      utter.onboundary = (e: SpeechSynthesisEvent) => {
-        if (e.name === 'word') {
-          const start = e.charIndex;
-          const len = (e as SpeechSynthesisEvent & { charLength?: number }).charLength;
-          const end = len != null
-            ? start + len
-            : (() => {
-                const next = text.indexOf(' ', start);
-                return next === -1 ? text.length : next;
-              })();
-          setHighlight({ start, end });
-        }
-      };
-      utter.onstart = () => setSpeaking(true);
-      utter.onend = () => {
-        setSpeaking(false);
-        setHighlight(null);
-        if (keepAliveRef.current) { clearInterval(keepAliveRef.current); keepAliveRef.current = null; }
-      };
-      utter.onerror = () => {
-        setSpeaking(false);
-        setHighlight(null);
-        if (keepAliveRef.current) { clearInterval(keepAliveRef.current); keepAliveRef.current = null; }
-      };
-      utterRef.current = utter;
-      window.speechSynthesis.speak(utter);
+    // Chrome 긴 텍스트 멈춤 버그 우회
+    const keepAlive = setInterval(() => {
+      if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+        window.speechSynthesis.pause();
+        window.speechSynthesis.resume();
+      } else if (!window.speechSynthesis.speaking) {
+        clearInterval(keepAlive);
+      }
+    }, 10000);
+    keepAliveRef.current = keepAlive;
+
+    // 어절 단위 하이라이트
+    utter.onboundary = (e: SpeechSynthesisEvent) => {
+      if (e.name === 'word') {
+        const start = e.charIndex;
+        const len = (e as SpeechSynthesisEvent & { charLength?: number }).charLength;
+        const end = len != null
+          ? start + len
+          : (() => {
+              const next = text.indexOf(' ', start);
+              return next === -1 ? text.length : next;
+            })();
+        setHighlight({ start, end });
+      }
     };
-
-    // 음성 목록이 아직 로드되지 않은 경우 voiceschanged 이벤트 대기
-    const voices = window.speechSynthesis.getVoices();
-    if (voices.length > 0) {
-      startSpeech(voices);
-    } else {
-      window.speechSynthesis.addEventListener('voiceschanged', () => {
-        startSpeech(window.speechSynthesis.getVoices());
-      }, { once: true });
-    }
+    utter.onstart = () => setSpeaking(true);
+    utter.onend = () => {
+      setSpeaking(false);
+      setHighlight(null);
+      if (keepAliveRef.current) { clearInterval(keepAliveRef.current); keepAliveRef.current = null; }
+    };
+    utter.onerror = (e) => {
+      if (e.error === 'interrupted') return; // cancel()로 인한 정상 중단
+      setSpeaking(false);
+      setHighlight(null);
+      if (keepAliveRef.current) { clearInterval(keepAliveRef.current); keepAliveRef.current = null; }
+    };
+    utterRef.current = utter;
+    window.speechSynthesis.speak(utter);
   }, []);
 
-  // autoRead ON 상태에서 페이지 이동 시 자동 재생
-  useEffect(() => {
-    if (!autoRead || !book || currentPage === 0) return;
-    const page = book.pages[currentPage - 1];
-    if (page?.text) readAloud(page.text, book.voiceGender, book.language);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, autoRead]);
-
-  const stopReading = () => {
+  const stopReading = useCallback(() => {
     window.speechSynthesis.cancel();
     setSpeaking(false);
     setHighlight(null);
     if (keepAliveRef.current) { clearInterval(keepAliveRef.current); keepAliveRef.current = null; }
-  };
+  }, []);
 
   const toggleAutoRead = () => {
     const next = !autoRead;
@@ -120,15 +118,38 @@ export default function BookViewerPage() {
     }
   };
 
+  // useEffect 대신 네비게이션 핸들러에서 직접 호출 (user gesture 컨텍스트 유지)
   const goNext = () => {
+    if (!book) return;
+    const next = Math.min(currentPage + 1, book.pages.length);
     stopReading();
-    setCurrentPage(p => Math.min(p + 1, book?.pages.length ?? 0));
+    setCurrentPage(next);
+    if (autoRead && next > 0) {
+      const p = book.pages[next - 1];
+      if (p?.text) readAloud(p.text, book.voiceGender, book.language);
+    }
   };
+
   const goPrev = () => {
+    if (!book) return;
+    const prev = Math.max(currentPage - 1, 0);
     stopReading();
-    setCurrentPage(p => Math.max(p - 1, 0));
+    setCurrentPage(prev);
+    if (autoRead && prev > 0) {
+      const p = book.pages[prev - 1];
+      if (p?.text) readAloud(p.text, book.voiceGender, book.language);
+    }
   };
-  const goTo = (p: number) => { stopReading(); setCurrentPage(p); };
+
+  const goTo = (p: number) => {
+    if (!book) return;
+    stopReading();
+    setCurrentPage(p);
+    if (autoRead && p > 0) {
+      const pg = book.pages[p - 1];
+      if (pg?.text) readAloud(pg.text, book.voiceGender, book.language);
+    }
+  };
 
   if (!book) {
     return (

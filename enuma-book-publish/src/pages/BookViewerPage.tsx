@@ -15,45 +15,83 @@ export default function BookViewerPage() {
   const [autoRead, setAutoRead] = useState(false);          // 🎧 헤드폰 토글
   const [highlight, setHighlight] = useState<HighlightRange | null>(null);
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => { if (id) setBook(getBook(id)); }, [id]);
-  useEffect(() => () => { window.speechSynthesis.cancel(); }, []);
+  useEffect(() => () => {
+    window.speechSynthesis.cancel();
+    if (keepAliveRef.current) clearInterval(keepAliveRef.current);
+  }, []);
 
   const readAloud = useCallback((text: string, voiceGender: string, language: string) => {
     if (!text.trim()) return;
     window.speechSynthesis.cancel();
+    if (keepAliveRef.current) { clearInterval(keepAliveRef.current); keepAliveRef.current = null; }
     setHighlight(null);
 
-    const utter = new SpeechSynthesisUtterance(text);
-    const allVoices = window.speechSynthesis.getVoices();
     const langCode = language === 'ko' ? 'ko' : language === 'id' ? 'id' : 'en';
+    const langFull = language === 'ko' ? 'ko-KR' : language === 'id' ? 'id-ID' : 'en-US';
 
-    if (voiceGender === 'child') { utter.pitch = 1.6; utter.rate = 1.05; }
-    else if (voiceGender === 'male') { utter.pitch = 0.8; utter.rate = 0.95; }
-    else { utter.pitch = 1.1; utter.rate = 1.0; }
+    const startSpeech = (voices: SpeechSynthesisVoice[]) => {
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = langFull;
 
-    const v = allVoices.find(v => v.lang.startsWith(langCode));
-    if (v) utter.voice = v;
+      if (voiceGender === 'child') { utter.pitch = 1.6; utter.rate = 1.05; }
+      else if (voiceGender === 'male') { utter.pitch = 0.8; utter.rate = 0.95; }
+      else { utter.pitch = 1.1; utter.rate = 1.0; }
 
-    // 단어별 하이라이트
-    utter.onboundary = (e: SpeechSynthesisEvent) => {
-      if (e.name === 'word') {
-        const start = e.charIndex;
-        const len = (e as SpeechSynthesisEvent & { charLength?: number }).charLength;
-        const end = len != null
-          ? start + len
-          : (() => {
-              const next = text.indexOf(' ', start);
-              return next === -1 ? text.length : next;
-            })();
-        setHighlight({ start, end });
-      }
+      const v = voices.find(v => v.lang.startsWith(langCode));
+      if (v) utter.voice = v;
+
+      // Chrome에서 긴 텍스트가 멈추는 버그 우회: 10초마다 pause→resume
+      const keepAlive = setInterval(() => {
+        if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+          window.speechSynthesis.pause();
+          window.speechSynthesis.resume();
+        } else if (!window.speechSynthesis.speaking) {
+          clearInterval(keepAlive);
+        }
+      }, 10000);
+      keepAliveRef.current = keepAlive;
+
+      // 어절 단위 하이라이트
+      utter.onboundary = (e: SpeechSynthesisEvent) => {
+        if (e.name === 'word') {
+          const start = e.charIndex;
+          const len = (e as SpeechSynthesisEvent & { charLength?: number }).charLength;
+          const end = len != null
+            ? start + len
+            : (() => {
+                const next = text.indexOf(' ', start);
+                return next === -1 ? text.length : next;
+              })();
+          setHighlight({ start, end });
+        }
+      };
+      utter.onstart = () => setSpeaking(true);
+      utter.onend = () => {
+        setSpeaking(false);
+        setHighlight(null);
+        if (keepAliveRef.current) { clearInterval(keepAliveRef.current); keepAliveRef.current = null; }
+      };
+      utter.onerror = () => {
+        setSpeaking(false);
+        setHighlight(null);
+        if (keepAliveRef.current) { clearInterval(keepAliveRef.current); keepAliveRef.current = null; }
+      };
+      utterRef.current = utter;
+      window.speechSynthesis.speak(utter);
     };
-    utter.onstart = () => setSpeaking(true);
-    utter.onend = () => { setSpeaking(false); setHighlight(null); };
-    utter.onerror = () => { setSpeaking(false); setHighlight(null); };
-    utterRef.current = utter;
-    window.speechSynthesis.speak(utter);
+
+    // 음성 목록이 아직 로드되지 않은 경우 voiceschanged 이벤트 대기
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      startSpeech(voices);
+    } else {
+      window.speechSynthesis.addEventListener('voiceschanged', () => {
+        startSpeech(window.speechSynthesis.getVoices());
+      }, { once: true });
+    }
   }, []);
 
   // autoRead ON 상태에서 페이지 이동 시 자동 재생
@@ -64,7 +102,12 @@ export default function BookViewerPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, autoRead]);
 
-  const stopReading = () => { window.speechSynthesis.cancel(); setSpeaking(false); setHighlight(null); };
+  const stopReading = () => {
+    window.speechSynthesis.cancel();
+    setSpeaking(false);
+    setHighlight(null);
+    if (keepAliveRef.current) { clearInterval(keepAliveRef.current); keepAliveRef.current = null; }
+  };
 
   const toggleAutoRead = () => {
     const next = !autoRead;

@@ -51,29 +51,29 @@ export default function Step2ContentPage({ onBack, onPublish, isEdit, onRevert }
   };
 
   const testVoice = (gender: VoiceGender) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(getSampleText());
-      const allVoices = window.speechSynthesis.getVoices();
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
 
-      const langCode = book.language === 'ko' ? 'ko' : book.language === 'id' ? 'id' : 'en';
+    const langCode = book.language === 'ko' ? 'ko' : book.language === 'id' ? 'id' : 'en';
+    const langFull = book.language === 'ko' ? 'ko-KR' : book.language === 'id' ? 'id-ID' : 'en-US';
+
+    const startTest = (voices: SpeechSynthesisVoice[]) => {
+      const utter = new SpeechSynthesisUtterance(getSampleText());
+      utter.lang = langFull;
 
       if (gender === 'male') {
-        utter.pitch = 0.8;
-        utter.rate = 0.95;
-        const v = allVoices.find(v => v.lang.startsWith(langCode) && v.name.toLowerCase().includes('male'))
-          || allVoices.find(v => v.lang.startsWith(langCode));
+        utter.pitch = 0.8; utter.rate = 0.95;
+        const v = voices.find(v => v.lang.startsWith(langCode) && v.name.toLowerCase().includes('male'))
+          || voices.find(v => v.lang.startsWith(langCode));
         if (v) utter.voice = v;
       } else if (gender === 'female') {
-        utter.pitch = 1.1;
-        utter.rate = 1.0;
-        const v = allVoices.find(v => v.lang.startsWith(langCode) && v.name.toLowerCase().includes('female'))
-          || allVoices.find(v => v.lang.startsWith(langCode));
+        utter.pitch = 1.1; utter.rate = 1.0;
+        const v = voices.find(v => v.lang.startsWith(langCode) && v.name.toLowerCase().includes('female'))
+          || voices.find(v => v.lang.startsWith(langCode));
         if (v) utter.voice = v;
       } else {
-        utter.pitch = 1.6;
-        utter.rate = 1.05;
-        const v = allVoices.find(v => v.lang.startsWith(langCode));
+        utter.pitch = 1.6; utter.rate = 1.05;
+        const v = voices.find(v => v.lang.startsWith(langCode));
         if (v) utter.voice = v;
       }
 
@@ -82,6 +82,15 @@ export default function Step2ContentPage({ onBack, onPublish, isEdit, onRevert }
       utter.onerror = () => setSpeaking(null);
       speechRef.current = utter;
       window.speechSynthesis.speak(utter);
+    };
+
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      startTest(voices);
+    } else {
+      window.speechSynthesis.addEventListener('voiceschanged', () => {
+        startTest(window.speechSynthesis.getVoices());
+      }, { once: true });
     }
   };
 

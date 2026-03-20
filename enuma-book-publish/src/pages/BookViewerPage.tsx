@@ -20,7 +20,6 @@ export default function BookViewerPage() {
 
   useEffect(() => { if (id) setBook(getBook(id)); }, [id]);
 
-  // 컴포넌트 마운트 시 voices 미리 로드
   useEffect(() => {
     const loadVoices = () => {
       const v = window.speechSynthesis.getVoices();
@@ -44,7 +43,6 @@ export default function BookViewerPage() {
     const langCode = language === 'ko' ? 'ko' : language === 'id' ? 'id' : 'en';
     const langFull = language === 'ko' ? 'ko-KR' : language === 'id' ? 'id-ID' : 'en-US';
 
-    // 미리 로드된 voices 사용, 없으면 즉시 조회
     const voices = voicesRef.current.length > 0
       ? voicesRef.current
       : window.speechSynthesis.getVoices();
@@ -59,7 +57,6 @@ export default function BookViewerPage() {
     const v = voices.find(v => v.lang.startsWith(langCode));
     if (v) utter.voice = v;
 
-    // Chrome 긴 텍스트 멈춤 버그 우회
     const keepAlive = setInterval(() => {
       if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
         window.speechSynthesis.pause();
@@ -70,30 +67,24 @@ export default function BookViewerPage() {
     }, 10000);
     keepAliveRef.current = keepAlive;
 
-    // 어절 단위 하이라이트
     utter.onboundary = (e: SpeechSynthesisEvent) => {
       if (e.name === 'word') {
         const start = e.charIndex;
         const len = (e as SpeechSynthesisEvent & { charLength?: number }).charLength;
         const end = len != null
           ? start + len
-          : (() => {
-              const next = text.indexOf(' ', start);
-              return next === -1 ? text.length : next;
-            })();
+          : (() => { const next = text.indexOf(' ', start); return next === -1 ? text.length : next; })();
         setHighlight({ start, end });
       }
     };
     utter.onstart = () => setSpeaking(true);
     utter.onend = () => {
-      setSpeaking(false);
-      setHighlight(null);
+      setSpeaking(false); setHighlight(null);
       if (keepAliveRef.current) { clearInterval(keepAliveRef.current); keepAliveRef.current = null; }
     };
     utter.onerror = (e) => {
-      if (e.error === 'interrupted') return; // cancel()로 인한 정상 중단
-      setSpeaking(false);
-      setHighlight(null);
+      if (e.error === 'interrupted') return;
+      setSpeaking(false); setHighlight(null);
       if (keepAliveRef.current) { clearInterval(keepAliveRef.current); keepAliveRef.current = null; }
     };
     utterRef.current = utter;
@@ -102,8 +93,7 @@ export default function BookViewerPage() {
 
   const stopReading = useCallback(() => {
     window.speechSynthesis.cancel();
-    setSpeaking(false);
-    setHighlight(null);
+    setSpeaking(false); setHighlight(null);
     if (keepAliveRef.current) { clearInterval(keepAliveRef.current); keepAliveRef.current = null; }
   }, []);
 
@@ -118,7 +108,6 @@ export default function BookViewerPage() {
     }
   };
 
-  // useEffect 대신 네비게이션 핸들러에서 직접 호출 (user gesture 컨텍스트 유지)
   const goNext = () => {
     if (!book) return;
     const next = Math.min(currentPage + 1, book.pages.length);
@@ -153,10 +142,10 @@ export default function BookViewerPage() {
 
   if (!book) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-orange-50">
-        <div className="text-center">
-          <p className="text-gray-400 mb-4">책을 찾을 수 없어요.</p>
-          <button onClick={() => navigate('/')} className="text-orange-500 font-bold">← 책장으로</button>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: `url('/assets/book/bg.jpg') center/cover` }}>
+        <div className="bg-black/60 rounded-2xl p-8 text-center">
+          <p className="text-amber-100 mb-4">책을 찾을 수 없어요.</p>
+          <button onClick={() => navigate('/')} className="text-amber-300 font-bold">← 책장으로</button>
         </div>
       </div>
     );
@@ -169,88 +158,97 @@ export default function BookViewerPage() {
   const difficulty = DIFFICULTY_LABELS[book.meta.difficulty as keyof typeof DIFFICULTY_LABELS] ?? '';
 
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col">
+    <div
+      className="min-h-screen flex flex-col"
+      style={{ background: `url('/assets/book/bg.jpg') center/cover fixed` }}
+    >
       {/* 상단 바 */}
-      <div className="bg-gray-800 px-4 py-3 flex items-center justify-between">
+      <div className="bg-black/50 backdrop-blur-sm px-4 py-3 flex items-center justify-between">
         <button
           onClick={() => { stopReading(); navigate('/'); }}
-          className="text-gray-300 hover:text-white text-sm"
+          className="text-amber-200 hover:text-white text-sm font-semibold"
         >
           ← 책장
         </button>
-        <span className="text-white font-bold text-sm truncate max-w-[160px]">{book.meta.title}</span>
-
+        <span className="text-amber-100 font-bold text-sm truncate max-w-[150px]">{book.meta.title}</span>
         <div className="flex items-center gap-3">
-          {/* 🎧 헤드폰 토글 */}
           <button
             onClick={toggleAutoRead}
             title={autoRead ? '자동 읽기 끄기' : '자동 읽기 켜기'}
             className={`text-xl transition-all rounded-full p-1.5
               ${autoRead
-                ? 'bg-orange-500 text-white shadow-md shadow-orange-900/40'
-                : 'text-gray-400 hover:text-gray-200'}`}
+                ? 'bg-orange-500 text-white shadow-md'
+                : 'text-amber-300 hover:text-white'}`}
           >
             🎧
           </button>
-          <span className="text-gray-400 text-xs">
+          <span className="text-amber-300 text-xs min-w-[48px] text-right">
             {isCover ? '표지' : `${currentPage} / ${totalPages}`}
           </span>
         </div>
       </div>
 
-      {/* 책 본문 */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 py-6">
-        <div className="w-full max-w-lg bg-white rounded-3xl overflow-hidden shadow-2xl">
-          {isCover ? (
-            <CoverPage
-              book={book}
-              flag={flag}
-              langLabel={langLabel}
-              difficulty={difficulty}
-              onStart={goNext}
-            />
-          ) : (
-            <ContentPage
-              page={page!}
-              speaking={speaking}
-              highlight={highlight}
-              onReadAloud={() => readAloud(page!.text, book.voiceGender, book.language)}
-              onStop={stopReading}
-            />
-          )}
+      {/* 책 본문 + 네비게이션 */}
+      <div className="flex-1 flex flex-col items-center justify-center px-2 py-6">
+        <div className="relative flex items-center justify-center w-full max-w-sm">
+
+          {/* 이전 화살표 */}
+          <button
+            onClick={goPrev}
+            disabled={currentPage === 0}
+            className="absolute -left-4 z-10 transition-opacity"
+            style={{ opacity: currentPage === 0 ? 0.25 : 1 }}
+            draggable={false}
+          >
+            <img src="/assets/book/arrow_left.png" alt="이전" className="h-16 w-auto" draggable={false} />
+          </button>
+
+          {/* 책 카드 */}
+          <div className="w-full rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: '3/4' }}>
+            {isCover ? (
+              <CoverPage
+                book={book}
+                flag={flag}
+                langLabel={langLabel}
+                difficulty={difficulty}
+                onStart={goNext}
+              />
+            ) : (
+              <ContentPage
+                page={page!}
+                speaking={speaking}
+                highlight={highlight}
+                onReadAloud={() => readAloud(page!.text, book.voiceGender, book.language)}
+                onStop={stopReading}
+              />
+            )}
+          </div>
+
+          {/* 다음 화살표 */}
+          <button
+            onClick={goNext}
+            disabled={currentPage === totalPages}
+            className="absolute -right-4 z-10 transition-opacity"
+            style={{ opacity: currentPage === totalPages ? 0.25 : 1 }}
+            draggable={false}
+          >
+            <img src="/assets/book/arrow_right.png" alt="다음" className="h-16 w-auto" draggable={false} />
+          </button>
         </div>
-      </div>
 
-      {/* 하단 네비게이션 */}
-      <div className="bg-gray-800 px-6 py-4 flex items-center justify-between gap-4">
-        <button
-          onClick={goPrev}
-          disabled={currentPage === 0}
-          className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all
-            ${currentPage === 0 ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-600 text-white hover:bg-gray-500'}`}
-        >
-          ‹ 이전
-        </button>
-
-        <div className="flex gap-1.5 overflow-x-auto max-w-[180px] py-1">
+        {/* 페이지 진행 점 */}
+        <div className="flex gap-2 mt-5 items-center">
           {Array.from({ length: totalPages + 1 }).map((_, i) => (
-            <button
-              key={i}
-              onClick={() => goTo(i)}
-              className={`w-2 h-2 rounded-full flex-shrink-0 transition-all
-                ${i === currentPage ? 'bg-orange-400 w-4' : 'bg-gray-600 hover:bg-gray-400'}`}
-            />
+            <button key={i} onClick={() => goTo(i)} className="transition-transform hover:scale-125">
+              <img
+                src={i === currentPage ? '/assets/book/progress_dot_current.png' : '/assets/book/progress_dot.png'}
+                alt={`page ${i}`}
+                className="w-4 h-4"
+                draggable={false}
+              />
+            </button>
           ))}
         </div>
-
-        <button
-          onClick={goNext}
-          disabled={currentPage === totalPages}
-          className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all
-            ${currentPage === totalPages ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-orange-500 text-white hover:bg-orange-400'}`}
-        >
-          다음 ›
-        </button>
       </div>
     </div>
   );
@@ -260,29 +258,80 @@ function CoverPage({ book, flag, langLabel, difficulty, onStart }: {
   book: StoredBook; flag: string; langLabel: string; difficulty: string; onStart: () => void;
 }) {
   const cover = book.pages.find(p => p.imagePreview)?.imagePreview;
+
   return (
-    <div className="flex flex-col">
-      <div className="relative bg-gradient-to-br from-orange-300 to-amber-400" style={{ paddingTop: '60%' }}>
-        {cover
-          ? <img src={cover} alt="cover" className="absolute inset-0 w-full h-full object-cover" />
-          : <div className="absolute inset-0 flex items-center justify-center"><span className="text-8xl">📖</span></div>
-        }
-        <span className="absolute top-3 right-3 text-2xl">{flag}</span>
+    <div
+      className="w-full h-full flex flex-col relative overflow-hidden"
+      style={{ background: `url('/assets/book/cover_bg.jpg') center/cover` }}
+    >
+      {/* 제본 그림자 (좌측 세로선) */}
+      <div
+        className="absolute inset-y-0 left-0 w-3 z-10 pointer-events-none"
+        style={{ background: 'linear-gradient(to right, rgba(0,0,0,0.35), transparent)' }}
+      />
+
+      {/* 삽화 영역 (프레임 + 이미지) */}
+      <div className="flex-1 flex items-center justify-center px-6 pt-6 pb-2" style={{ minHeight: 0 }}>
+        <div className="relative w-full h-full">
+          {/* 금색 프레임 */}
+          <img
+            src="/assets/book/cover_frame.png"
+            alt=""
+            className="absolute inset-0 w-full h-full object-fill z-10 pointer-events-none"
+            draggable={false}
+          />
+          {/* 삽화 */}
+          <div className="absolute inset-[6%] overflow-hidden rounded-lg">
+            {cover
+              ? <img src={cover} alt="cover" className="w-full h-full object-cover" draggable={false} />
+              : (
+                <div className="w-full h-full flex items-center justify-center" style={{ background: '#e8d9b5' }}>
+                  <span className="text-6xl opacity-40">📖</span>
+                </div>
+              )
+            }
+          </div>
+          {/* 언어 국기 */}
+          <span className="absolute top-2 right-2 text-xl z-20">{flag}</span>
+        </div>
       </div>
-      <div className="p-6 text-center">
-        <h1 className="text-2xl font-bold text-gray-800 mb-1">{book.meta.title}</h1>
-        {book.meta.writtenBy && <p className="text-sm text-gray-500 mb-1">글: {book.meta.writtenBy}</p>}
-        {book.meta.illustratedBy && <p className="text-sm text-gray-400 mb-3">그림: {book.meta.illustratedBy}</p>}
-        <div className="flex justify-center gap-2 mb-6">
-          {difficulty && <span className="text-xs bg-amber-100 text-amber-700 px-3 py-1 rounded-full">{difficulty}</span>}
-          <span className="text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded-full">{flag} {langLabel}</span>
-          <span className="text-xs bg-gray-100 text-gray-500 px-3 py-1 rounded-full">{book.pages.length}페이지</span>
+
+      {/* 제목·저자 영역 */}
+      <div className="px-5 pb-4 text-center">
+        <h1
+          className="font-bold leading-tight mb-1"
+          style={{ color: '#4F3D18', fontSize: '22px' }}
+        >
+          {book.meta.title}
+        </h1>
+        {book.meta.writtenBy && (
+          <p className="text-xs mb-0.5" style={{ color: '#6B5230' }}>글: {book.meta.writtenBy}</p>
+        )}
+        {book.meta.illustratedBy && (
+          <p className="text-xs mb-2" style={{ color: '#6B5230' }}>그림: {book.meta.illustratedBy}</p>
+        )}
+        <div className="flex justify-center gap-1.5 mb-3 flex-wrap">
+          {difficulty && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+              style={{ background: '#f0e0b0', color: '#7a5820' }}>
+              {difficulty}
+            </span>
+          )}
+          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+            style={{ background: '#d8ecd0', color: '#3a6b28' }}>
+            {flag} {langLabel}
+          </span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full"
+            style={{ background: '#e8e0d0', color: '#6B5230' }}>
+            {book.pages.length}p
+          </span>
         </div>
         <button
           onClick={onStart}
-          className="w-full bg-orange-500 text-white font-bold py-3 rounded-2xl hover:bg-orange-600 transition-colors shadow-md"
+          className="w-full py-2 rounded-xl font-bold text-sm transition-all hover:opacity-90 active:scale-95"
+          style={{ background: '#c8900a', color: '#fff4d0' }}
         >
-          읽기 시작 📖
+          읽기 시작 ▶
         </button>
       </div>
     </div>
@@ -297,41 +346,62 @@ function ContentPage({ page, speaking, highlight, onReadAloud, onStop }: {
   onStop: () => void;
 }) {
   return (
-    <div className="flex flex-col">
-      {page.imagePreview ? (
-        <img src={page.imagePreview} alt={`page ${page.pageNumber}`} className="w-full object-cover" style={{ maxHeight: 280 }} />
-      ) : (
-        <div className="w-full bg-gradient-to-br from-amber-50 to-orange-100 flex items-center justify-center" style={{ height: 180 }}>
-          <span className="text-5xl opacity-30">🖼️</span>
-        </div>
-      )}
+    <div className="w-full h-full flex flex-col" style={{ background: '#FFFEF7' }}>
+      {/* 이미지 영역 (상단 58%) */}
+      <div className="flex-shrink-0" style={{ height: '58%' }}>
+        {page.imagePreview
+          ? (
+            <img
+              src={page.imagePreview}
+              alt={`page ${page.pageNumber}`}
+              className="w-full h-full object-cover"
+              draggable={false}
+            />
+          )
+          : (
+            <div
+              className="w-full h-full flex items-center justify-center"
+              style={{ background: '#f5ead0' }}
+            >
+              <span className="text-5xl opacity-25">🖼️</span>
+            </div>
+          )
+        }
+      </div>
 
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-3 gap-3">
-          <span className="text-xs text-orange-400 font-bold bg-orange-50 px-2 py-0.5 rounded-full">
+      {/* 텍스트 영역 (하단 42%) */}
+      <div className="flex-1 px-5 py-3 flex flex-col min-h-0">
+        <div className="flex items-center justify-between mb-2">
+          <span
+            className="text-xs font-bold px-2 py-0.5 rounded-full"
+            style={{ background: '#f0e4c0', color: '#7a5820' }}
+          >
             Page {page.pageNumber}
           </span>
-          {/* 🎧 페이지별 읽기 버튼 */}
+          {/* 읽어주기 버튼 (나무 질감 버튼) */}
           <button
             onClick={speaking ? onStop : onReadAloud}
             disabled={!page.text.trim()}
             title={speaking ? '읽기 중지' : '읽어주기'}
-            className={`w-9 h-9 rounded-full flex items-center justify-center text-lg transition-all border-2
-              ${speaking
-                ? 'bg-orange-100 border-orange-400 animate-pulse'
-                : page.text.trim()
-                  ? 'border-gray-200 hover:border-orange-300 hover:bg-orange-50'
-                  : 'border-gray-100 opacity-30 cursor-not-allowed'}`}
+            className="transition-all active:scale-95"
+            style={{ opacity: page.text.trim() ? 1 : 0.3 }}
           >
-            🎧
+            <img
+              src={speaking ? '/assets/book/readaloud_active.png' : '/assets/book/readaloud_normal.png'}
+              alt={speaking ? '중지' : '읽기'}
+              className="h-9 w-auto"
+              draggable={false}
+            />
           </button>
         </div>
 
-        {/* 하이라이트 텍스트 */}
-        <p className="text-gray-700 text-base leading-relaxed whitespace-pre-wrap min-h-[80px]">
+        <p
+          className="overflow-y-auto leading-relaxed whitespace-pre-wrap flex-1"
+          style={{ color: '#4F3D18', fontSize: '16px', lineHeight: '1.7' }}
+        >
           {page.text
             ? <HighlightedText text={page.text} range={highlight} />
-            : <span className="text-gray-300 italic">내용 없음</span>
+            : <span style={{ color: '#c0b090', fontStyle: 'italic' }}>내용 없음</span>
           }
         </p>
       </div>
@@ -347,7 +417,7 @@ function HighlightedText({ text, range }: { text: string; range: HighlightRange 
   return (
     <>
       {before}
-      <mark className="bg-yellow-300 rounded px-0.5 text-gray-800">{word}</mark>
+      <mark className="bg-yellow-300 rounded px-0.5" style={{ color: '#4F3D18' }}>{word}</mark>
       {after}
     </>
   );

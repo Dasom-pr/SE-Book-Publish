@@ -28,13 +28,13 @@ export default function LibraryPage() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: '#2c1a0e' }}>
+    <div className="min-h-screen bg-gradient-to-b from-orange-50 to-amber-50">
       {/* 헤더 */}
-      <div style={{ background: '#3d2510' }} className="sticky top-0 z-10 shadow-md">
+      <div className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-2xl">📚</span>
-            <span className="font-bold text-amber-200 text-lg">Enuma Book Publish</span>
+            <span className="font-bold text-orange-700 text-lg">Enuma Book Publish</span>
           </div>
           <button
             onClick={() => navigate('/create')}
@@ -48,8 +48,8 @@ export default function LibraryPage() {
       <div className="max-w-2xl mx-auto px-4 py-6">
         {/* 타이틀 */}
         <div className="mb-6">
-          <h2 className="text-xl font-bold text-amber-200">내 책장</h2>
-          <p className="text-sm text-amber-700 mt-0.5">
+          <h2 className="text-xl font-bold text-gray-800">내 책장</h2>
+          <p className="text-sm text-gray-400 mt-0.5">
             {books.length > 0 ? `총 ${books.length}권의 책` : '아직 만든 책이 없어요'}
           </p>
         </div>

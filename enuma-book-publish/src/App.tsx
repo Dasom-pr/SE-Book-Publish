@@ -6,20 +6,52 @@ import BookViewerPage from './pages/BookViewerPage';
 import Step1MetaPage from './pages/Step1MetaPage';
 import Step2ContentPage from './pages/Step2ContentPage';
 import { bookStateToStored, saveBook, getBook, storedToBookState } from './utils/bookStorage';
+import { translateBookState } from './utils/translate';
 import { useBook } from './context/BookContext';
 import type { BookState } from './types/book';
+import { LANGUAGE_LABELS } from './types/book';
+
+/** 번역 중 로딩 화면 */
+function TranslatingScreen({ language }: { language: string }) {
+  const lang = LANGUAGE_LABELS[language as keyof typeof LANGUAGE_LABELS];
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-orange-50 to-amber-50">
+      <div className="text-center px-6">
+        <div className="text-6xl mb-4 animate-bounce">🌐</div>
+        <p className="text-lg font-bold text-orange-700 mb-1">번역 중...</p>
+        <p className="text-sm text-gray-400">
+          {lang ? `${lang.flag} ${lang.label}` : language}로 번역하고 있어요
+        </p>
+      </div>
+    </div>
+  );
+}
 
 /** 신규 책 만들기 플로우 */
 function CreateFlow() {
   const [step, setStep] = useState<1 | 2>(1);
+  const [translating, setTranslating] = useState(false);
   const { book } = useBook();
   const navigate = useNavigate();
 
-  const handlePublish = () => {
-    const stored = bookStateToStored(book);
-    saveBook(stored);
-    navigate(`/book/${stored.id}`);
+  const handlePublish = async () => {
+    setTranslating(true);
+    try {
+      const translated = await translateBookState(book);
+      const stored = bookStateToStored(translated);
+      saveBook(stored);
+      navigate(`/book/${stored.id}`);
+    } catch {
+      // 번역 실패 시 원본 텍스트 그대로 저장
+      const stored = bookStateToStored(book);
+      saveBook(stored);
+      navigate(`/book/${stored.id}`);
+    } finally {
+      setTranslating(false);
+    }
   };
+
+  if (translating) return <TranslatingScreen language={book.language} />;
 
   return step === 1
     ? <Step1MetaPage onNext={() => setStep(2)} />
@@ -54,24 +86,35 @@ function EditFlow() {
 
 function EditFlowInner({ originalId, originalState }: { originalId: string; originalState: BookState }) {
   const [step, setStep] = useState<1 | 2>(1);
+  const [translating, setTranslating] = useState(false);
   const { book, setMeta, setPages, setVoiceGender, setLanguage } = useBook();
   const navigate = useNavigate();
 
-  const handleApply = () => {
-    // 기존 id 유지하면서 덮어쓰기
-    const updated = bookStateToStored(book);
-    saveBook({ ...updated, id: originalId });
-    navigate(`/book/${originalId}`);
+  const handleApply = async () => {
+    setTranslating(true);
+    try {
+      const translated = await translateBookState(book);
+      const updated = bookStateToStored(translated);
+      saveBook({ ...updated, id: originalId });
+      navigate(`/book/${originalId}`);
+    } catch {
+      const updated = bookStateToStored(book);
+      saveBook({ ...updated, id: originalId });
+      navigate(`/book/${originalId}`);
+    } finally {
+      setTranslating(false);
+    }
   };
 
   const handleRevert = () => {
-    // 원래 상태로 복원
     setMeta(originalState.meta);
     setPages(originalState.pages);
     setVoiceGender(originalState.voiceGender);
     setLanguage(originalState.language);
     navigate(`/book/${originalId}`);
   };
+
+  if (translating) return <TranslatingScreen language={book.language} />;
 
   return step === 1
     ? <Step1MetaPage onNext={() => setStep(2)} />

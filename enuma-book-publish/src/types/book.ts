@@ -26,6 +26,23 @@ export interface BookState {
   language: Language;
 }
 
+// localStorage에 저장 가능한 직렬화 포맷 (File 객체 제거, base64 이미지만)
+export interface StoredPage {
+  id: string;
+  pageNumber: number;
+  text: string;
+  imagePreview: string; // base64 data URL
+}
+
+export interface StoredBook {
+  id: string;
+  meta: BookMeta;
+  pages: StoredPage[];
+  voiceGender: VoiceGender;
+  language: Language;
+  createdAt: string;
+}
+
 export const DIFFICULTY_LABELS: Record<Difficulty, string> = {
   lv1: '입문 Lv.1',
   lv2: '초급 Lv.2',

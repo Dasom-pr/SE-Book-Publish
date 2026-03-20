@@ -11,10 +11,9 @@ export default function BookViewerPage() {
   const navigate = useNavigate();
   const [book, setBook] = useState<StoredBook | null>(null);
   const [currentPage, setCurrentPage] = useState(0);       // 0 = 표지
-  const [speaking, setSpeaking] = useState(false);
-  const [autoRead, setAutoRead] = useState(false);
+  const [, setSpeaking] = useState(false);
+  const [autoRead, setAutoRead] = useState(true);           // 기본값 ON
   const [highlight, setHighlight] = useState<HighlightRange | null>(null);
-  const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
   const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
 
@@ -34,6 +33,7 @@ export default function BookViewerPage() {
     };
   }, []);
 
+  // ── 전체 텍스트 읽기 (어절 boundary 하이라이트) ──
   const readAloud = useCallback((text: string, voiceGender: string, language: string) => {
     if (!text.trim()) return;
     window.speechSynthesis.cancel();
@@ -42,18 +42,13 @@ export default function BookViewerPage() {
 
     const langCode = language === 'ko' ? 'ko' : language === 'id' ? 'id' : 'en';
     const langFull = language === 'ko' ? 'ko-KR' : language === 'id' ? 'id-ID' : 'en-US';
-
-    const voices = voicesRef.current.length > 0
-      ? voicesRef.current
-      : window.speechSynthesis.getVoices();
+    const voices = voicesRef.current.length > 0 ? voicesRef.current : window.speechSynthesis.getVoices();
 
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = langFull;
-
     if (voiceGender === 'child') { utter.pitch = 1.6; utter.rate = 1.05; }
     else if (voiceGender === 'male') { utter.pitch = 0.8; utter.rate = 0.95; }
     else { utter.pitch = 1.1; utter.rate = 1.0; }
-
     const v = voices.find(v => v.lang.startsWith(langCode));
     if (v) utter.voice = v;
 
@@ -87,7 +82,35 @@ export default function BookViewerPage() {
       setSpeaking(false); setHighlight(null);
       if (keepAliveRef.current) { clearInterval(keepAliveRef.current); keepAliveRef.current = null; }
     };
-    utterRef.current = utter;
+    window.speechSynthesis.speak(utter);
+  }, []);
+
+  // ── 어절 클릭 읽기 (해당 위치 즉시 하이라이트) ──
+  const readWord = useCallback((word: string, wordStart: number, wordEnd: number, voiceGender: string, language: string) => {
+    if (!word.trim()) return;
+    window.speechSynthesis.cancel();
+    if (keepAliveRef.current) { clearInterval(keepAliveRef.current); keepAliveRef.current = null; }
+    // 클릭한 어절 즉시 하이라이트
+    setHighlight({ start: wordStart, end: wordEnd });
+
+    const langCode = language === 'ko' ? 'ko' : language === 'id' ? 'id' : 'en';
+    const langFull = language === 'ko' ? 'ko-KR' : language === 'id' ? 'id-ID' : 'en-US';
+    const voices = voicesRef.current.length > 0 ? voicesRef.current : window.speechSynthesis.getVoices();
+
+    const utter = new SpeechSynthesisUtterance(word);
+    utter.lang = langFull;
+    if (voiceGender === 'child') { utter.pitch = 1.6; utter.rate = 1.05; }
+    else if (voiceGender === 'male') { utter.pitch = 0.8; utter.rate = 0.95; }
+    else { utter.pitch = 1.1; utter.rate = 1.0; }
+    const v = voices.find(v => v.lang.startsWith(langCode));
+    if (v) utter.voice = v;
+
+    utter.onstart = () => setSpeaking(true);
+    utter.onend = () => { setSpeaking(false); setHighlight(null); };
+    utter.onerror = (e) => {
+      if (e.error === 'interrupted') return;
+      setSpeaking(false); setHighlight(null);
+    };
     window.speechSynthesis.speak(utter);
   }, []);
 
@@ -108,6 +131,7 @@ export default function BookViewerPage() {
     }
   };
 
+  // 네비게이션: user gesture 컨텍스트에서 직접 readAloud 호출
   const goNext = () => {
     if (!book) return;
     const next = Math.min(currentPage + 1, book.pages.length);
@@ -172,6 +196,7 @@ export default function BookViewerPage() {
         </button>
         <span className="text-amber-100 font-bold text-sm truncate max-w-[150px]">{book.meta.title}</span>
         <div className="flex items-center gap-3">
+          {/* 🎧 유일한 음성 버튼 */}
           <button
             onClick={toggleAutoRead}
             title={autoRead ? '자동 읽기 끄기' : '자동 읽기 켜기'}
@@ -198,7 +223,6 @@ export default function BookViewerPage() {
             disabled={currentPage === 0}
             className="absolute -left-4 z-10 transition-opacity"
             style={{ opacity: currentPage === 0 ? 0.25 : 1 }}
-            draggable={false}
           >
             <img src="/assets/book/arrow_left.png" alt="이전" className="h-16 w-auto" draggable={false} />
           </button>
@@ -216,10 +240,10 @@ export default function BookViewerPage() {
             ) : (
               <ContentPage
                 page={page!}
-                speaking={speaking}
                 highlight={highlight}
-                onReadAloud={() => readAloud(page!.text, book.voiceGender, book.language)}
-                onStop={stopReading}
+                onWordClick={(word, start, end) =>
+                  readWord(word, start, end, book.voiceGender, book.language)
+                }
               />
             )}
           </div>
@@ -230,7 +254,6 @@ export default function BookViewerPage() {
             disabled={currentPage === totalPages}
             className="absolute -right-4 z-10 transition-opacity"
             style={{ opacity: currentPage === totalPages ? 0.25 : 1 }}
-            draggable={false}
           >
             <img src="/assets/book/arrow_right.png" alt="다음" className="h-16 w-auto" draggable={false} />
           </button>
@@ -254,77 +277,45 @@ export default function BookViewerPage() {
   );
 }
 
+// ── 표지 ──
 function CoverPage({ book, flag, langLabel, difficulty, onStart }: {
   book: StoredBook; flag: string; langLabel: string; difficulty: string; onStart: () => void;
 }) {
   const cover = book.pages.find(p => p.imagePreview)?.imagePreview;
-
   return (
     <div
       className="w-full h-full flex flex-col relative overflow-hidden"
       style={{ background: `url('/assets/book/cover_bg.jpg') center/cover` }}
     >
-      {/* 제본 그림자 (좌측 세로선) */}
-      <div
-        className="absolute inset-y-0 left-0 w-3 z-10 pointer-events-none"
-        style={{ background: 'linear-gradient(to right, rgba(0,0,0,0.35), transparent)' }}
-      />
+      <div className="absolute inset-y-0 left-0 w-3 z-10 pointer-events-none"
+        style={{ background: 'linear-gradient(to right, rgba(0,0,0,0.35), transparent)' }} />
 
-      {/* 삽화 영역 (프레임 + 이미지) */}
       <div className="flex-1 flex items-center justify-center px-6 pt-6 pb-2" style={{ minHeight: 0 }}>
         <div className="relative w-full h-full">
-          {/* 금색 프레임 */}
-          <img
-            src="/assets/book/cover_frame.png"
-            alt=""
-            className="absolute inset-0 w-full h-full object-fill z-10 pointer-events-none"
-            draggable={false}
-          />
-          {/* 삽화 */}
+          <img src="/assets/book/cover_frame.png" alt=""
+            className="absolute inset-0 w-full h-full object-fill z-10 pointer-events-none" draggable={false} />
           <div className="absolute inset-[6%] overflow-hidden rounded-lg">
             {cover
               ? <img src={cover} alt="cover" className="w-full h-full object-cover" draggable={false} />
-              : (
-                <div className="w-full h-full flex items-center justify-center" style={{ background: '#e8d9b5' }}>
+              : <div className="w-full h-full flex items-center justify-center" style={{ background: '#e8d9b5' }}>
                   <span className="text-6xl opacity-40">📖</span>
                 </div>
-              )
             }
           </div>
-          {/* 언어 국기 */}
           <span className="absolute top-2 right-2 text-xl z-20">{flag}</span>
         </div>
       </div>
 
-      {/* 제목·저자 영역 */}
       <div className="px-5 pb-4 text-center">
-        <h1
-          className="font-bold leading-tight mb-1"
-          style={{ color: '#4F3D18', fontSize: '22px' }}
-        >
+        <h1 className="font-bold leading-tight mb-1" style={{ color: '#4F3D18', fontSize: '22px' }}>
           {book.meta.title}
         </h1>
-        {book.meta.writtenBy && (
-          <p className="text-xs mb-0.5" style={{ color: '#6B5230' }}>글: {book.meta.writtenBy}</p>
-        )}
-        {book.meta.illustratedBy && (
-          <p className="text-xs mb-2" style={{ color: '#6B5230' }}>그림: {book.meta.illustratedBy}</p>
-        )}
+        {book.meta.writtenBy && <p className="text-xs mb-0.5" style={{ color: '#6B5230' }}>글: {book.meta.writtenBy}</p>}
+        {book.meta.illustratedBy && <p className="text-xs mb-2" style={{ color: '#6B5230' }}>그림: {book.meta.illustratedBy}</p>}
         <div className="flex justify-center gap-1.5 mb-3 flex-wrap">
-          {difficulty && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
-              style={{ background: '#f0e0b0', color: '#7a5820' }}>
-              {difficulty}
-            </span>
-          )}
-          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
-            style={{ background: '#d8ecd0', color: '#3a6b28' }}>
-            {flag} {langLabel}
-          </span>
-          <span className="text-[10px] px-2 py-0.5 rounded-full"
-            style={{ background: '#e8e0d0', color: '#6B5230' }}>
-            {book.pages.length}p
-          </span>
+          {difficulty && <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: '#f0e0b0', color: '#7a5820' }}>{difficulty}</span>}
+          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: '#d8ecd0', color: '#3a6b28' }}>{flag} {langLabel}</span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: '#e8e0d0', color: '#6B5230' }}>{book.pages.length}p</span>
         </div>
         <button
           onClick={onStart}
@@ -338,69 +329,34 @@ function CoverPage({ book, flag, langLabel, difficulty, onStart }: {
   );
 }
 
-function ContentPage({ page, speaking, highlight, onReadAloud, onStop }: {
+// ── 내용 페이지 (읽기 버튼 없음, 어절 클릭만) ──
+function ContentPage({ page, highlight, onWordClick }: {
   page: { pageNumber: number; text: string; imagePreview: string };
-  speaking: boolean;
   highlight: HighlightRange | null;
-  onReadAloud: () => void;
-  onStop: () => void;
+  onWordClick: (word: string, start: number, end: number) => void;
 }) {
   return (
     <div className="w-full h-full flex flex-col" style={{ background: '#FFFEF7' }}>
-      {/* 이미지 영역 (상단 58%) */}
+      {/* 이미지 영역 상단 58% */}
       <div className="flex-shrink-0" style={{ height: '58%' }}>
         {page.imagePreview
-          ? (
-            <img
-              src={page.imagePreview}
-              alt={`page ${page.pageNumber}`}
-              className="w-full h-full object-cover"
-              draggable={false}
-            />
-          )
-          : (
-            <div
-              className="w-full h-full flex items-center justify-center"
-              style={{ background: '#f5ead0' }}
-            >
+          ? <img src={page.imagePreview} alt={`page ${page.pageNumber}`} className="w-full h-full object-cover" draggable={false} />
+          : <div className="w-full h-full flex items-center justify-center" style={{ background: '#f5ead0' }}>
               <span className="text-5xl opacity-25">🖼️</span>
             </div>
-          )
         }
       </div>
 
-      {/* 텍스트 영역 (하단 42%) */}
+      {/* 텍스트 영역 하단 42% */}
       <div className="flex-1 px-5 py-3 flex flex-col min-h-0">
-        <div className="flex items-center justify-between mb-2">
-          <span
-            className="text-xs font-bold px-2 py-0.5 rounded-full"
-            style={{ background: '#f0e4c0', color: '#7a5820' }}
-          >
-            Page {page.pageNumber}
-          </span>
-          {/* 읽어주기 버튼 (나무 질감 버튼) */}
-          <button
-            onClick={speaking ? onStop : onReadAloud}
-            disabled={!page.text.trim()}
-            title={speaking ? '읽기 중지' : '읽어주기'}
-            className="transition-all active:scale-95"
-            style={{ opacity: page.text.trim() ? 1 : 0.3 }}
-          >
-            <img
-              src={speaking ? '/assets/book/readaloud_active.png' : '/assets/book/readaloud_normal.png'}
-              alt={speaking ? '중지' : '읽기'}
-              className="h-9 w-auto"
-              draggable={false}
-            />
-          </button>
-        </div>
-
-        <p
-          className="overflow-y-auto leading-relaxed whitespace-pre-wrap flex-1"
-          style={{ color: '#4F3D18', fontSize: '16px', lineHeight: '1.7' }}
-        >
+        <span className="text-xs font-bold px-2 py-0.5 rounded-full self-start mb-2"
+          style={{ background: '#f0e4c0', color: '#7a5820' }}>
+          Page {page.pageNumber}
+        </span>
+        <p className="overflow-y-auto leading-relaxed flex-1 select-none"
+          style={{ color: '#4F3D18', fontSize: '16px', lineHeight: '1.7' }}>
           {page.text
-            ? <HighlightedText text={page.text} range={highlight} />
+            ? <ClickableText text={page.text} range={highlight} onWordClick={onWordClick} />
             : <span style={{ color: '#c0b090', fontStyle: 'italic' }}>내용 없음</span>
           }
         </p>
@@ -409,16 +365,52 @@ function ContentPage({ page, speaking, highlight, onReadAloud, onStop }: {
   );
 }
 
-function HighlightedText({ text, range }: { text: string; range: HighlightRange | null }) {
-  if (!range || range.start >= range.end) return <>{text}</>;
-  const before = text.slice(0, range.start);
-  const word = text.slice(range.start, range.end);
-  const after = text.slice(range.end);
+// ── 어절 클릭 + 하이라이트 텍스트 ──
+function ClickableText({ text, range, onWordClick }: {
+  text: string;
+  range: HighlightRange | null;
+  onWordClick: (word: string, start: number, end: number) => void;
+}) {
+  // 공백/줄바꿈과 단어 토큰으로 분리
+  const tokens: { text: string; start: number; isWord: boolean }[] = [];
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === ' ' || text[i] === '\n') {
+      let j = i;
+      while (j < text.length && (text[j] === ' ' || text[j] === '\n')) j++;
+      tokens.push({ text: text.slice(i, j), start: i, isWord: false });
+      i = j;
+    } else {
+      let j = i;
+      while (j < text.length && text[j] !== ' ' && text[j] !== '\n') j++;
+      tokens.push({ text: text.slice(i, j), start: i, isWord: true });
+      i = j;
+    }
+  }
+
   return (
     <>
-      {before}
-      <mark className="bg-yellow-300 rounded px-0.5" style={{ color: '#4F3D18' }}>{word}</mark>
-      {after}
+      {tokens.map((token, idx) => {
+        if (!token.isWord) {
+          return <span key={idx} style={{ whiteSpace: 'pre-wrap' }}>{token.text}</span>;
+        }
+        const tokenEnd = token.start + token.text.length;
+        const isHighlighted = range != null && range.start < tokenEnd && range.end > token.start;
+        return (
+          <span
+            key={idx}
+            onClick={() => onWordClick(token.text, token.start, tokenEnd)}
+            className="cursor-pointer rounded transition-colors"
+            style={{
+              background: isHighlighted ? '#FDE047' : 'transparent',
+              color: '#4F3D18',
+              padding: isHighlighted ? '0 2px' : undefined,
+            }}
+          >
+            {token.text}
+          </span>
+        );
+      })}
     </>
   );
 }

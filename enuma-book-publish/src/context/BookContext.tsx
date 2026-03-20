@@ -37,8 +37,8 @@ const initialState: BookState = {
   language: 'en',
 };
 
-export function BookProvider({ children }: { children: ReactNode }) {
-  const [book, setBook] = useState<BookState>(initialState);
+export function BookProvider({ children, init }: { children: ReactNode; init?: BookState }) {
+  const [book, setBook] = useState<BookState>(init ?? initialState);
 
   const setMeta = (meta: BookMeta) => setBook(b => ({ ...b, meta }));
 

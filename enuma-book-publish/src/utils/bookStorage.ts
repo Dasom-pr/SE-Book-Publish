@@ -1,4 +1,4 @@
-import type { StoredBook, BookState, StoredPage } from '../types/book';
+import type { StoredBook, BookState, StoredPage, BookPage } from '../types/book';
 
 const STORAGE_KEY = 'enuma_books';
 
@@ -23,6 +23,23 @@ export function saveBook(book: StoredBook): void {
 export function deleteBook(id: string): void {
   const books = getAllBooks().filter(b => b.id !== id);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(books));
+}
+
+/** StoredBook → BookState 변환 (수정 모드 초기값으로 사용) */
+export function storedToBookState(stored: StoredBook): BookState {
+  const pages: BookPage[] = stored.pages.map(p => ({
+    id: p.id,
+    pageNumber: p.pageNumber,
+    text: p.text,
+    imageFile: null,        // File 객체는 복원 불가
+    imagePreview: p.imagePreview,
+  }));
+  return {
+    meta: { ...stored.meta },
+    pages,
+    voiceGender: stored.voiceGender,
+    language: stored.language,
+  };
 }
 
 export function bookStateToStored(state: BookState): StoredBook {

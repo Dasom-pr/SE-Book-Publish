@@ -8,6 +8,8 @@ import { LANGUAGE_LABELS } from '../types/book';
 interface Props {
   onBack: () => void;
   onPublish: () => void;
+  isEdit?: boolean;
+  onRevert?: () => void;
 }
 
 const voices: { value: VoiceGender; label: string; icon: string }[] = [
@@ -18,7 +20,7 @@ const voices: { value: VoiceGender; label: string; icon: string }[] = [
 
 const languages: Language[] = ['ko', 'en', 'id'];
 
-export default function Step2ContentPage({ onBack, onPublish }: Props) {
+export default function Step2ContentPage({ onBack, onPublish, isEdit, onRevert }: Props) {
   const { book, addPage, deletePage, deletePages, updatePage, setVoiceGender, setLanguage, totalCharCount } = useBook();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [speaking, setSpeaking] = useState<VoiceGender | null>(null);
@@ -199,33 +201,66 @@ export default function Step2ContentPage({ onBack, onPublish }: Props) {
 
       {/* 하단 고정 바 */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 shadow-lg px-4 py-3">
-        <div className="max-w-xl mx-auto flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={onBack}
-            className="px-5 py-2.5 rounded-xl border-2 border-gray-200 text-gray-600 text-sm font-semibold hover:border-gray-300 transition-colors"
-          >
-            ← 이전
-          </button>
-
-          <div className="text-xs text-gray-400 text-center">
-            <span className="font-bold text-gray-600">{totalCharCount.toLocaleString()}</span>자
-            <br />
-            <span className="text-gray-300">(공백 제외)</span>
+        {isEdit ? (
+          /* 수정 모드 버튼 */
+          <div className="max-w-xl mx-auto flex flex-col gap-2">
+            <div className="flex items-center justify-center">
+              <div className="text-xs text-gray-400 text-center">
+                총 <span className="font-bold text-gray-600">{totalCharCount.toLocaleString()}</span>자
+                <span className="text-gray-300"> (공백 제외)</span>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onRevert}
+                className="flex-1 py-2.5 rounded-xl border-2 border-amber-300 text-amber-700 text-sm font-semibold hover:bg-amber-50 transition-colors"
+              >
+                ↩ 이전 설정으로 돌아가기
+              </button>
+              <button
+                type="button"
+                onClick={onPublish}
+                disabled={book.pages.every(p => !p.text.trim())}
+                className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all
+                  ${book.pages.some(p => p.text.trim())
+                    ? 'bg-orange-500 text-white shadow-md hover:bg-orange-600 active:scale-95'
+                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+              >
+                ✅ 수정 적용하기
+              </button>
+            </div>
           </div>
+        ) : (
+          /* 일반(신규 출판) 버튼 */
+          <div className="max-w-xl mx-auto flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={onBack}
+              className="px-5 py-2.5 rounded-xl border-2 border-gray-200 text-gray-600 text-sm font-semibold hover:border-gray-300 transition-colors"
+            >
+              ← 이전
+            </button>
 
-          <button
-            type="button"
-            onClick={onPublish}
-            disabled={book.pages.every(p => !p.text.trim())}
-            className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all
-              ${book.pages.some(p => p.text.trim())
-                ? 'bg-orange-500 text-white shadow-md hover:bg-orange-600 active:scale-95'
-                : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-          >
-            📚 책 출판하기
-          </button>
-        </div>
+            <div className="text-xs text-gray-400 text-center">
+              <span className="font-bold text-gray-600">{totalCharCount.toLocaleString()}</span>자
+              <br />
+              <span className="text-gray-300">(공백 제외)</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={onPublish}
+              disabled={book.pages.every(p => !p.text.trim())}
+              className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all
+                ${book.pages.some(p => p.text.trim())
+                  ? 'bg-orange-500 text-white shadow-md hover:bg-orange-600 active:scale-95'
+                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+            >
+              📚 책 출판하기
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
